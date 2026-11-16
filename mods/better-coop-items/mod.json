@@ -1,0 +1,10 @@
+{
+  "id": "better-coop-items",
+  "name": "更好的联机道具",
+  "version": "1.0.0",
+  "author": "黑咖啡和冰月亮",
+  "credits": "点子：B 站 蟹堡星人",
+  "description": "四个只在双人合作里出现的携带道具：气势纽带、讲究望远镜、粉色香草、共生孢子。",
+  "default": "off",
+  "api": 1
+}
