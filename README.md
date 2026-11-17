@@ -18,7 +18,7 @@
 
 | mod | 内容 | 点子 |
 |---|---|---|
-| [更好的联机道具](mods/better-coop-items/) | 四个合作专用的携带道具：气势纽带、讲究望远镜、粉色香草、共生孢子 | B 站 蟹堡星人 |
+| [更好的联机道具](mods/better-coop-items/) v0.9 | 27 个合作专用的联机道具（自带图标），外加一条新规则：打完第 5、25、55、75、125、175 层后多一次「联机道具」选择，4 个选项，两人轮流挑 | B 站 蟹堡星人 |
 
 ## 我有个点子
 
@@ -34,8 +34,8 @@
 
 ## 我想自己做一个 mod
 
-1. 看一遍 [Mod 格式和接口](docs/MOD-API.md)，一页纸。
-2. 照着范例 [mods/better-coop-items](mods/better-coop-items/) 新建 `mods/你的-mod-id/`，放 `mod.json`、`mod.js`，再加一个 `README.md` 写清楚每样东西的效果。
+1. 看一遍 [Mod 格式和接口](docs/MOD-API.md)。想知道引擎是怎么接进游戏的，看 [engine/](engine/)（`EXT.md` 讲怎么给引擎加新的事件）。
+2. 照着范例 [mods/better-coop-items](mods/better-coop-items/) 新建 `mods/你的-mod-id/`，放 `mod.json`、`mod.js`，再加一个 `README.md` 写清楚每样东西的效果；道具图标放 `icons/道具id.png`（最大 32×32）。
 3. 跑一下自查：`node tools/build-mods.mjs . --check`
 4. 提 Pull Request。会有人看代码、在游戏里实际试一遍，没问题就合并，跟着下一次安装包一起发。
 

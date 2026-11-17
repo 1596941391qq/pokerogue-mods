@@ -1,7 +1,19 @@
-# Mod 格式和接口（接口版本 1）
+# Mod 格式和接口（接口版本 2）
 
-一个 mod 就是 `mods/<id>/` 下的一个文件夹，里面两个文件：`mod.json`（说明）和 `mod.js`（代码）。
+一个 mod 就是 `mods/<id>/` 下的一个文件夹：`mod.json`（说明）、`mod.js`（代码），还可以有一个 `icons/` 文件夹放自己的道具图标。
 mod 只通过下面这套接口干活，不直接碰游戏内部的类和方法——游戏更新后内部名字会变，接口不变。
+
+**接口版本 1 写的 mod 不用改**：`mod.json` 里写着 `"api": 1`（或没写）的 mod 照旧加载，行为和以前一样。想用下面标了「2 新增」的东西，把 `"api"` 改成 `2`。
+
+## 接口版本 2 新增了什么
+
+- 自带图标：`icons/<名字>.png`，不用再借游戏里的图。
+- 道具分两种：**携带道具**（带在一只宝可梦身上）和**被动增益**（放进队伍背包，全队生效）。
+- 道具可以叠加：每个道具有「最大携带数量」`max`，同一只宝可梦（被动增益是全队）最多拿这么多个。
+- 新事件：`heal`（回复 HP）、`moveUsed`（一只宝可梦用完一个招式）、`battleStart` / `battleEnd`（一场战斗开始 / 结束）。
+- 新的战场函数：能力等级、最高的能力、提升能力、按游戏的方式回复 HP、集火层数、可重放的随机数等。
+- 随 v0.9 一起加的：额外的奖励界面、刷新价格 / 选项个数 / 幸运值 / 薄荷 / 精灵球的事件、保命和倒下、回复和掉血、树果、壁 / 天气 / 粉末（见「随 v0.9 一起加的接口」一节）。
+- 品质的叫法：金色 = **高级道具**，红色 = **肉鸽道具**，紫色 = **大师道具**。
 
 ## mod.json
 
@@ -9,19 +21,29 @@ mod 只通过下面这套接口干活，不直接碰游戏内部的类和方法�
 {
   "id": "better-coop-items",
   "name": "更好的联机道具",
-  "version": "1.0.0",
+  "version": "0.9.0",
   "author": "写代码的人",
   "credits": "点子：B 站 蟹堡星人",
   "description": "一句话说明，显示在游戏里的 mod 列表上。",
   "default": "off",
-  "api": 1
+  "api": 2
 }
 ```
 
 - `id`：3–40 位小写字母、数字、短横线，必须和文件夹同名，定了就不要改（存档按它认道具）。
 - `credits`：点子是谁提的。没有可以不写。
 - `default`：玩家没动过开关时是开还是关，不写就是关。
+- `api`：这个 mod 是按哪个接口版本写的，`1` 或 `2`。比游戏自带的接口版本高的 mod 不会加载。
 - `id`、`name`、`version`、`author`、`description` 必填。
+
+## 图标 icons/（2 新增）
+
+- 放在 `mods/<id>/icons/` 下，PNG，最大 32×32 像素，单个不超过 16 KB，背景透明。小于 32×32 的会居中显示。
+- 文件名用小写字母、数字、短横线。**文件名和道具 id 一样，就自动用上**，`api.item` 里不用写 `icon`。
+- 想让几个道具共用一张图，或者文件名和 id 不一样：`icon: 'my-picture'`（写不写 `.png` 都行）。
+- 仍然可以借游戏道具图集里的图：`icon: 'choice_specs'`（先找自带图标里有没有这个名字，没有就当作图集里的图名）。
+- 图标打进 mod 包里，游戏运行时不联网取任何东西。所有 mod 的包加起来不能超过 300 KB。
+- 奖励界面、战斗里宝可梦脚边的小牌子、队伍界面、mod 列表都会显示这张图。
 
 ## mod.js
 
@@ -29,11 +51,14 @@ mod 只通过下面这套接口干活，不直接碰游戏内部的类和方法�
 CoopMods.define('my-mod-id', function (api) {
   const B = api.battle;
   const charm = api.item({
-    id: 'lucky-charm', name: '幸运符', tier: 'ULTRA', weight: 4, icon: 'lucky_egg',
+    id: 'lucky-charm', name: '幸运符', tier: 'ULTRA', kind: 'held', max: 3, weight: 4,
     description: '显示在奖励界面上的说明，\n可以换行。',
   });
   api.on('turnEnd', () => {
-    for (const p of B.playerField()) if (charm.heldBy(p)) B.message(B.name(p) + '的幸运符在发光！');
+    for (const p of B.playerField()) {
+      const n = charm.count(p);              // 这只宝可梦带了几个
+      if (n) B.heal(p, 5 * n, { message: B.name(p) + '的幸运符在发光！' });
+    }
   });
 });
 ```
@@ -46,32 +71,60 @@ CoopMods.define('my-mod-id', function (api) {
 | 字段 | 说明 |
 |---|---|
 | `id` | 小写字母、数字、短横线。存档里记的是 `mod id:道具 id` |
-| `name` `description` | 名字和说明（中文） |
-| `tier` | 品质：`ULTRA` 金、`ROGUE` 红、`MASTER` 紫（也可以 `COMMON` 白、`GREAT` 蓝） |
+| `name` `description` | 名字和说明（中文）。说明最多**两行**，用 `\n` 换行：奖励界面的说明框只显示两行，第三行会被截掉、也不会滚动出来。一行大约放得下 20–24 个全角字（半角的字母、数字算半个）。写不下的细则放进 mod 的 README |
+| `tier` | 品质：`ULTRA` 高级道具（金）、`ROGUE` 肉鸽道具（红）、`MASTER` 大师道具（紫）。也可以 `COMMON` 普通道具（白）、`GREAT` 超级道具（蓝） |
+| `kind` | 2 新增。道具性质：`'held'` 携带道具（默认）或 `'passive'` 被动增益 |
+| `max` | 2 新增。最大携带数量，1–999，默认 1。携带道具按每只宝可梦算，被动增益按全队算 |
 | `weight` | 在同品质奖励里的权重，和原版道具一个量级。上限：白 4、蓝 4、金 9、红 5、紫 14，超过按上限算，保证不比同品质的原版携带道具更常见 |
-| `icon` | 游戏道具图集里的图名（例如 `choice_specs`）。暂时不能带自己的图，先借一张像的，在说明里写明是占位 |
+| `icon` | 可以不写（用和 id 同名的自带图标）。见上面「图标」 |
+| `iconFallback` | 2 新增，可以不写。自带图标还没解码出来的那一瞬间先显示的图集图名，不写就是游戏的「?」 |
+| `note` | 2 新增，可以不写。一个函数 `(state, count) => '一句话'`：被动增益在 mod 列表的「队伍背包」那一行里，跟在个数后面显示（最多 24 个字），比如骰子的「还能免费刷新5次」。只用来显示，不要在里面改东西 |
 
-道具只在双人合作的战后「5 选 2」奖励里出现，选中后给自己的一只宝可梦带上。它不是游戏原生道具：谁带着什么由 mod 层自己记，写在存档的一个附加块里，关掉 mod 或换成没有 mod 的版本读档都不会出错。
+道具只在双人合作里出现，从战后奖励里选：
 
-返回的对象：
+- **携带道具**：选中后挑自己的一只宝可梦带上。这只已经带满了（到了 `max`）就不能再给它，界面会提示「××的××已经带满了（最多 N 个）」。
+- **被动增益**：选中后直接进队伍背包，两位玩家共用。背包里到了 `max` 就不会再出现在奖励里。
+- 谁都拿不下的道具（每只宝可梦都带满了，或者背包满了）不会出现在奖励里。
+- 一只宝可梦身上的联机道具太多、小牌子放不下时，先只画图标，再放不下就在最后写「+N」（还有 N 种没画出来）。
 
-- `item.heldBy(p)`：这只宝可梦带着它吗（mod 关着时永远是否）
-- `item.state(p)`：这件道具的小本子，一个普通对象，会跟着存档走，只放数字、字符串、布尔值
-- `item.give(p, state)` / `item.remove(p)`：给上、拿走（消耗品用完就 `remove`）
-- `item.key`、`item.name`
+它们不是游戏原生道具：谁带着什么、背包里有什么由 mod 层自己记，写在存档的一个附加块里，关掉 mod 或换成没有 mod 的版本读档都不会出错；再打开时已经拿到的道具还在。接口版本 1 时期的存档照常读取。
+
+返回的对象（下面叫 `item`）：
+
+| | 携带道具 | 被动增益 |
+|---|---|---|
+| `item.heldBy(p)` | 这只宝可梦带着它吗 | 背包里有吗（`p` 不用传） |
+| `item.count(p)`（2 新增） | 这只宝可梦带了几个 | 背包里有几个 |
+| `item.state(p)` | 这件道具的小本子：一个普通对象，跟着存档走，只放数字、字符串、布尔值。每个携带者一本（叠了几个也只有一本），没带着时是 `null` | 全队一本，`item.state()` |
+| `item.give(p, state)` | 再给这只一个；已经到 `max` 时返回 `false`，什么也不发生 | `item.give(state)`，背包满了返回 `false` |
+| `item.take(p, n)`（2 新增） | 拿走 n 个（不写就是 1 个）。拿走最后一个时小本子一起没了 | `item.take(n)` |
+| `item.remove(p)` | 全部拿走 | `item.remove()` |
+| `item.holders()`（2 新增） | 队伍里带着它的宝可梦 | 空 |
+| `item.canTake(who)`（2 新增） | 还有宝可梦能再带一个吗。`who` 写 `'p1'` / `'p2'` 就只看这位玩家的宝可梦 | 背包还放得下吗 |
+
+还有 `item.key`、`item.id`、`item.name`、`item.kind`、`item.max`。mod 关着时 `heldBy` 永远是否、`count` 永远是 0。
+
+消耗品的写法：用掉一个就 `item.take(p)`。叠加的效果按 `item.count(p)` 算。
+
+> 接口版本 1 的 mod：道具都是携带道具、`max` 是 1；对已经带着的宝可梦再 `give` 一次，等于把小本子换成新的（和以前一样）。
 
 ## 事件 `api.on(名字, 处理函数)`
 
 | 事件 | 什么时候 | 收到什么 | 返回值 |
 |---|---|---|---|
-| `damageCalc` | 算一次招式伤害时（真打和 AI 估算都会来） | `attacker` `target` `damage` `critical` `simulated`（估算时为真，这时不要发消息、不要改状态） | 返回数字 = 新的伤害 |
-| `beforeDamage` | 任何一次扣血之前 | `target` `damage` `source` `byMove`（是招式打的）`lethal`（会打倒）`fullHp`（满血）`then(fn)`（扣完血后再做的事） | 返回数字 = 实际扣多少 |
+| `damageCalc` | 算一次招式伤害时（真打和 AI 估算都会来） | `attacker` `target` `damage` `critical` `simulated`（估算时为真，这时不要发消息、不要改状态） | 返回数字 = 新的伤害。可以是小数：所有处理函数算完后才取整一次，几个倍率连乘不会差 1 |
+| `beforeDamage` | 任何一次扣血之前 | `target` `damage` `source` `byMove`（是招式打的）`lethal`（会打倒）`fullHp`（满血）`then(fn)`（扣完血后再做的事，`fn` 收到实际扣掉的量。注意：招式同时打几个目标时，`fn` 在「这一个目标」刚扣完血时就调用，这一击还没打完；这时不要用 `B.damage` 去扣同一边另一只宝可梦的血，它要是也是这一击的目标，会倒下两次。要扣就等到 `moveUsed`，或者用下面的 `fatalHit` 的 `then`） | 返回数字 = 实际扣多少 |
 | `moveSelect` | 玩家选招、游戏判断某招能不能选时 | `pokemon` `moveId` | 返回一句话 = 不能选，并显示这句话 |
 | `status` | 陷入异常状态后 | `pokemon` `status`（`poison` `toxic` `paralysis` `sleep` `freeze` `burn`） | — |
-| `statChange` | 能力等级真的变了之后 | `pokemon` `changes`（`[{stat, stages}]`，实际生效的量）`copied`（是 `B.changeStats` 造成的） | — |
-| `faint` | 一只宝可梦倒下 | `pokemon` | — |
-| `turnStart` / `turnEnd` | 回合开始出招前 / 回合结束 | — | — |
-| `give` / `remove` | 一件 mod 道具被带上 / 拿走 | `pokemon` `item`（道具的 key） | — |
+| `statChange` | 能力等级真的变了之后 | `pokemon` `changes`（`[{stat, stages, name}]`，实际生效的量；`name` 是 `'atk'` 这样的名字，2 新增）`copied`（是 `B.changeStats` 造成的） | — |
+| `faint` | 一只宝可梦倒下（HP 归零，开始倒下的那一刻；带着复活种子的也会先收到这个事件）。想在「真的倒下之后」给它的队友改能力，用下面的 `fainted` | `pokemon` | — |
+| `turnStart` / `turnEnd` | 回合开始出招前（所有指令都选完了）/ 回合结束 | — | — |
+| `give` | 一件 mod 道具被带上 / 放进背包 | `pokemon`（被动增益是 `null`）`item`（道具的 key）`count`（现在有几个）`from`（`'reward'` 是从奖励里选的）。后两个 2 新增 | — |
+| `remove` | 一件 mod 道具被拿走 | `pokemon` `item` `left`（还剩几个，2 新增） | — |
+| `heal`（2 新增） | 一只宝可梦的 HP 回复之后（招式、特性、树果、`B.heal` 都算）。奖励界面、商店里用药**不会**触发它（游戏直接改 HP），那种情况用下面的 `medicineUsed` | `pokemon` `amount`（实际回复的量）`tag`（是 `B.heal` 造成的就带着你当时写的 tag，否则是 `null`）`inBattle`（是不是在战斗中）`phase` | — |
+| `moveUsed`（2 新增） | 一只宝可梦用完一个招式后（每个目标都结算完了） | `pokemon` `moveId` `targets`（瞄准的位置）`ok`（招式成功了）`damage`（这一招一共打掉多少 HP）`hits`（`[{target, damage}]`）`followUp`（是跟着别的招式自动放出来的）。用招式的宝可梦这时可能已经不在场上了（比如被自己的反伤打倒），先用 `B.onField(pokemon)` 看一眼；这种情况下 `ok` 按「有没有打中谁」算 | — |
+| `battleStart`（2 新增） | 一场战斗的第一回合开始前。读档、或者回到标题画面后继续同一波，会再来一次 | `wave` `turn` | — |
+| `battleEnd`（2 新增） | 一场战斗结束 | `wave` `victory` | — |
 
 还有一个更底层的：`api.onPhase('TurnInitPhase', fn, 'start' | 'end')`，在游戏的某个阶段开始前或结束时调用。阶段名是游戏内部的类名，官方更新可能改名，能用上面的事件就不要用它。
 
@@ -80,11 +133,150 @@ CoopMods.define('my-mod-id', function (api) {
 ## 战场 `api.battle`
 
 - 看：`name(p)` `isPlayer(p)` `index(p)`（0、1 我方，2、3 对面）`owner(p)`（`'p1'` / `'p2'`）`hp(p)` `maxHp(p)` `onField(p)` `playerField()` `ally(p)`（场上的队友，没有就是 null）`status(p)` `statusName(状态)` `wave()` `turn()`
+- 看（2 新增）：
+  - `fainted(p)`：倒下了吗
+  - `enemyField()`：对面场上的宝可梦
+  - `party()`：两位玩家的全部宝可梦；`bench()`：其中不在场上的（倒下的也算）
+  - `isAlly(a, b)`：是不是同一边的两只不同的宝可梦
+  - `inBattle()`：现在是不是在一场战斗里（奖励界面、商店不算）
+- 能力（2 新增）：
+  - `statStages(p)`：现在的能力等级，`{ atk, def, spatk, spdef, spd, acc, eva }`，每项 −6 到 +6
+  - `stat(p, 'atk')`：这只宝可梦自己的能力值（不算能力等级、道具和特性），可以问 `atk` `def` `spatk` `spdef` `spd`
+  - `highestStat(p)`：攻击、防御、特攻、特防、速度里最高的那项的名字（不看 HP；一样高时取排在前面的）
+  - `raise(p, 能力, n)`：提升 n 级（n 是负数就是降低，不写是 1）。能力可以是一个名字、一组名字，或者 `'all'`（上面五项）。和宝可梦自己用变化招式一样：有动画和提示，会触发 `statChange`
+  - `changeStats(p, changes)`：照样改能力等级，并打上 `copied` 标记防止来回传。`changes` 里的 `stat` 写名字或数字都行
 - 招式：`moveName(p, moveId)` `moveCount(p)`（上场以来用过几次招）`firstMoveSince(p, n)`（从第 n 次起用的第一个招式）
-- 集火：`focusTarget()`——这回合两位玩家用单体招式瞄准的同一个敌人的位置，没有集火就是 null。和游戏里「集火」横幅用的是同一个判定
-- 做：`message(文字)` `damage(p, 数值)`（直接扣血，不算招式）`cureStatus(p)` `changeStats(p, changes)`（照样改能力等级，并打上 `copied` 标记防止来回传）
+- 集火：
+  - `focusTarget()`：这回合两位玩家用单体招式瞄准的同一个敌人的位置，没有集火就是 null。和游戏里「集火」横幅用的是同一个判定
+  - `focusStreak()`（2 新增）：集火层数，连续集火了几回合（这回合算在内），这回合没集火就是 0
+- 做：
+  - `message(文字)`
+  - `damage(p, 数值, { indirect })`：直接扣血，不算招式。`indirect: true` 时像中毒、反伤那样结算（2 新增）
+  - `heal(p, 数值, { message, tag, quiet })`（2 新增）：按游戏自己的方式回复 HP（有回复动画，回复护符照常加成）。排在消息队列里，轮到时才真的回复。`tag` 会出现在随后的 `heal` 事件里，用来认出「这是我自己回的」，免得来回触发。不在场上、已经满 HP 或数值不大于 0 时返回 `false`
+  - `cureStatus(p)`
+- 随机（2 新增）：`random(tag)` 给一个 0 到 1 之间的数。同一局、同一波、同一回合、同一个 tag 永远是同一个数，读档重打结果不变。**凡是「有几成概率」的效果都用它，不要用 `Math.random()`**
 
-另外：`api.fieldState(p, 名字)` 是只在这只宝可梦留在场上期间有效的小本子（换下就清，不进存档）；`api.log(...)` 写日志；`api.manifest` 是自己的 mod.json。
+## 其他
+
+- `api.STAT`（2 新增）：能力的名字和编号，`atk` 1、`def` 2、`spatk` 3、`spdef` 4、`spd` 5、`acc` 6、`eva` 7。`api.STAT.names` 是这七个名字，`api.STAT.battle` 是前五个；`api.STAT.zh('spatk')` 是「特攻」；`api.STAT.name(3)` 是 `'spatk'`；`api.STAT.num('spatk')` 是 3。接口里凡是要写能力的地方，名字和编号都认。
+- `api.oncePerTurn(tag)`（2 新增）：同一回合里用同一个 tag 第一次问是 `true`，之后都是 `false`。「每回合最多发动一次」用它。
+- `api.fieldState(p, 名字)`：只在这只宝可梦留在场上期间有效的小本子（换下就清，不进存档）。
+- `api.log(...)` 写日志；`api.manifest` 是自己的 mod.json；`api.version` 是游戏自带的接口版本（现在是 2）。
+
+## 随 v0.9 一起加的接口（引擎扩展提供）
+
+下面这些不在引擎核心里，由 `engine/ext-*.js` 这六个扩展提供，和核心一起打进游戏，所有 `"api": 2` 的 mod 都能用。写法和上面一样：事件用 `api.on`，战场函数在 `api.battle`（下面写成 `B`）。
+
+### 额外的奖励界面
+
+`api.rewardScreen(def)`：加一个「额外的奖励界面」。它排在这一层正常奖励（两位玩家都挑完）之后，两位玩家照样轮流挑：先挑的人从全部选项里拿 1 个，另一位从剩下的里拿 1 个。界面上方显示标题，没有商店那一排。这一层没有正常奖励界面（逃跑了、每 10 层的那一层）就不会有它。
+
+| 字段 | 说明 |
+|---|---|
+| `id` | 小写字母、数字、短横线 |
+| `title` `hint` | 界面上方的标题（中文），`hint` 是标题下面的一行小字（可以不写） |
+| `count` | 一次出几个选项（1–8） |
+| `reroll` | `true` = 左下角可以付费刷新（价格和游戏的刷新一样，从正在挑的那位玩家的钱里扣）；不写 = 不能刷新 |
+| `exclusive` | `true` = 只要这个 mod 开着，所有 mod 道具都不再混进正常奖励，只从这种界面里出 |
+| `when(ctx)` | 这一层的正常奖励排上队时问一次：返回 `true` 就在它后面加这个界面。`ctx.wave` 是层数 |
+| `first(ctx)` | 谁先挑：返回 `'p1'` / `'p2'`；不写或返回别的 = 和正常奖励一样（单数层 2P 先） |
+| `options(ctx)` | 界面要打开时问：返回这次的选项（数组）。每一项是一个 mod 道具的 key（`item.key`），或者 `api.gameRewards` 给的游戏道具。返回空数组 = 这次不出这个界面。`ctx`：`wave` 层数、`count` 要几个、`round` 第几轮（第二位玩家那一轮是 2）、`reroll` 第几次刷新（0 = 没刷新过）、`picker` 现在轮到谁、`random()` 给 0 到 1 的数（同一局、同一层、同一次刷新永远一样） |
+| `opened(ctx)` | 界面真的打开了（有东西可挑）时调用一次；一次性的道具在这里 `item.take()` |
+| `emptyText` | 没有东西可出、这次不出界面时显示的一句话（可以不写） |
+| `refill` | `true` = 轮到第二位玩家时，剩下的选项里已经没人用得上的会被拿掉，再问一次 `options(ctx)`（`ctx.round` 是 2）补上；不写 = 只拿掉、不补 |
+
+- `api.gameRewards({ kinds, tier, max, who, ignoreBracelet })`：队伍里有宝可梦用得上的游戏道具，最多 `max` 个、互不重复。`kinds`：`'tm'` 招式学习器、`'evolution'` 进化道具、`'form'` 形态变化道具（超级石、极巨菇菇也在这一类），可以写数组；`tier`：`'COMMON'` / `'GREAT'` / `'ULTRA'` / `'ROGUE'`，游戏给这个道具定的品质；`who`：`'p1'` / `'p2'` = 只看这位玩家的宝可梦用不用得上，不写 = 两位玩家的都算；`ignoreBracelet: true` = 没有超级手环 / 极巨腕带时，超级石和极巨菇菇也算。返回的是游戏自己的对象，只能原样放进 `options` 的返回值里。只在奖励阶段里能用（`options` / `when` 里），别处返回空数组。
+- `api.modItems()`：所有开着的 mod 的道具，`[{ key, mod, id, name, tier, kind, max, canTake(who) }]`。
+- `B.rewardPicker()`：现在奖励界面轮到谁挑，`'p1'` / `'p2'`；不在奖励界面时是 `null`。
+- `B.sameReward(a, b)`：`api.gameRewards` 给的两个道具是不是同一个（同一个招式学习器、同一块石头）。
+- 只要有 mod 开着，所有奖励界面（游戏自己的也算）上的确认、取消键都会等精灵球全部打开之后才生效（最多等 3 秒）：游戏本身在球还没开完时离开界面会卡死。
+
+### 奖励、刷新、幸运值、精灵球
+
+| 事件 | 什么时候 | 收到什么 | 可以返回 |
+|---|---|---|---|
+| `rewardCount` | 普通战斗后的道具选择（和它的刷新）要决定显示几个选项时。固定奖励（首领、劲敌、神秘事件）、第二位玩家挑剩下的那一轮、额外的奖励界面不会问 | `{count, wave, round, picker, rerolls, normal}`，`count` 是到目前为止的个数 | 一个数字 = 新的个数（1–12）。多个 mod 依次问，后面的看到前面改过的 `count` |
+| `rerollCost` | 游戏要知道「刷新商店」多少钱时（显示价格、按下刷新都会问，一屏会问很多次，不要在这里扣东西）。额外的奖励界面的付费刷新也会问 | `{cost, price, lock, wave, round, picker, rerolls, normal}`，`price` 是游戏的价格，`cost` 是到目前为止的价格，`lock` = 开着锁定稀有度 | 一个数字，或 `{cost, label}`。只能更便宜，不能更贵；`label` 是价格位置显示的字（比如「免费×3」） |
+| `rerolled` | 一次刷新真的做完之后 | `{cost, price, free, wave, round, picker, rerolls, normal}`，`free` = 这次因为 mod 而没花钱 | 不看返回值。在这里扣次数 |
+| `teamLuck` | 游戏要用队伍幸运值时（奖励升级、右上角的字母、野生宝可梦稀有度） | `{wave}` | 一个数字 = 加几点（0–14 的刻度，D 到 SSS）。多个 mod 相加，加完最高 SSS。每日挑战里不生效 |
+| `mintRate` | 普通战斗后的道具选择生成选项时 | `{wave, round, picker, rerolls, normal}` | 一个大于 0 的数字 = 薄荷出现概率的倍数。多个 mod 相乘 |
+| `ballThrown` | 一颗精灵球扔出去、已经从球袋里扣掉之后 | `{ball, owner, wave}`，`ball` 是球的种类编号，`owner` 是扔球的玩家 | `true` = 这颗球不消耗（放回原来的球袋）。有一个 mod 返回 `true` 就算 |
+
+- 免费的刷新不计入游戏的涨价：mod 把价格改成 0 的那几次刷新之后，第一次付费刷新还是这一屏的起步价。
+- `B.teamLuck()` 返回 `{value, letter, bonus}`：加过之后的队伍幸运值、对应的字母、其中 mod 加了多少。
+
+### 保命和倒下
+
+| 事件 | 什么时候 | 收到什么 | 返回值 |
+|---|---|---|---|
+| `fatalHit` | 我方一只宝可梦被招式打到 HP 归零的那一下（忍耐、结实、气势头带这些游戏自带的保命效果都没救下它之后）。只有招式直接打的才会来：中毒、天气、反伤、mod 自己用 `B.damage` 扣的血都不算 | `target`（被打的）`attacker`（出招的）`damage`（这一下本来要扣的量）`hp`（挨打前的 HP）`rest`（留 1 点 HP 之后多出来的伤害 = damage −（hp − 1））`then(fn)`（这一击对每个目标都结算完之后再做的事；想再扣谁的血、发消息都放在这里面，不要在处理函数里直接做） | 返回 `true` = 让它留下 1 点 HP、不倒下。第一个返回 `true` 的处理函数说了算，后面的不再问 |
+| `fainted` | 一只宝可梦真的倒下了（带着复活种子被救起来的不算；`faint` 在那之前就会来） | `pokemon` | — |
+
+- `B.knowsMove(p, moveId)`：这只宝可梦现在会不会这个招式。
+
+### 回复和掉血
+
+| 事件 | 什么时候 | 收到什么 |
+|---|---|---|
+| `healDone` | 一次战斗中的回复做完之后（HP 已经加上，它自己的提示也排好了）。和 `heal` 的区别：`heal` 在 HP 刚加上的那一瞬间来，这时再排一次回复会抢在原来那句提示前面；想「跟着回复再做点什么」用这个。只管游戏的回复阶段（招式、特性、树果、吃剩的东西、贝壳之铃、`B.heal`、`B.healExact`），分担痛楚、再生力这类直接改 HP 的不算 | `pokemon` `amount`（实际回复的量，一定大于 0）`tag`（`B.heal` / `B.healExact` 写的 tag，否则 `null`）`revive`（是复活种子那样的复活） |
+| `hpLost` | 一只宝可梦的 HP 真的减少之后（招式、天气、反伤、中毒、灼伤、分担痛楚都算） | `pokemon` `amount`（实际减少的量）`fainted`（这一下倒下了） |
+| `medicineUsed` | 在战斗外（奖励界面、商店）用了一件回复 HP 的药（伤药、好伤药、厉害伤药、全满药、全复药、活力碎片、活力块、圣灰）并且真的生效之后 | `targets`（药用在了哪些宝可梦身上；圣灰是被它救起来的那些）`revive`（是复活类的药）`item`（药的名字）`effectOn(p)`（这件药用在 p 身上按游戏的算法能回复多少 HP，不看 p 现在缺多少）`screen`（第几个奖励界面；在同一个界面上连用几件药，这个数不变） |
+
+- `B.canHeal(p)`：p 在场上、没倒下、HP 没满、没被「回复封锁」：现在给它回复有用吗。
+- `B.healExact(p, n, opts)`：和 `B.heal` 一样排一次回复，但正好回复 n 点（回复护符不加成）。`opts` 同 `heal`：`message`、`tag`、`quiet`。回复不了（见 `canHeal`）或 n 不大于 0 时返回 `false`。「把一个已经算好的数转给别人」用它，不然会被回复护符再加成一次。
+- `B.restoreHp(p, n)`：给不在战斗中的宝可梦（比如没上场的）直接加 HP，没有动画；倒下的不加。返回实际加了多少。
+
+### 树果
+
+| 事件 | 什么时候 | 收到什么 |
+|---|---|---|
+| `berryTime` | 游戏里吃树果的时刻（每回合所有招式打完之后）。对我方场上每只没倒下的宝可梦各来一次，原版树果先吃完再轮到它 | `pokemon` |
+| `berryEaten` | 一只宝可梦真的吃掉了一个树果之后：回合末自己吃、大快朵颐、茶会、虫咬 / 啄食抢来吃都算，敌人吃也会来；反刍的重复效果不算。用 `B.eatAsBerry` 吃掉的 mod 道具也算 | `pokemon`（吃的那只）`berry`（树果编号 0–10，mod 道具时是 `null`）`name`（树果或道具的名字）`item`（mod 道具的 key，原版树果时是 `null`）`kept`（被原版树果袋保住没消耗时为真；招式吃掉的原版树果不知道，是 `null`） |
+
+树果编号：0 文柚果、1 木子果、2 谜芝果、3 枝荔果、4 龙睛果、5 龙火果、6 杏仔果、7 沙鳞果、8 兰萨果、9 星桃果、10 苹野果。
+
+- `B.hpRatio(p)`：HP 占最大 HP 的比例，按游戏判断树果的方式取整到百分之一（49.6% 得到 0.5）。「HP 低于一半时吃」写 `B.hpRatio(p) < 0.5`。
+- `B.berryName(编号)`：树果的名字。
+- `B.berries(p)`：这只宝可梦的 11 种树果，`[{ berry, name, count, max }]`（`max` 是它现在的最大携带数量）。
+- `B.berryRoom(p)`：这只宝可梦还能再拿的树果编号（倒下的、敌人的是空）。
+- `B.giveBerry(p, 编号)`：给它 1 个原版树果。已经带满、倒下了、不是我方时返回 `false`，什么也不发生。
+- `B.eatAsBerry(p, item)`：让这只宝可梦把自己带着的一个 mod 道具当树果吃掉（在 `berryTime` 里用）。它负责：对面有「紧张感」时不让吃并提示（返回 `false`）；播放吃道具的动画；按队伍里原版「树果袋」的概率决定消不消耗；消耗的话拿走 1 个；之后可以用「打嗝」；发出 `berryEaten`。返回 `'eaten'`（吃掉了 1 个）、`'kept'`（树果袋保住了，道具还在）或 `false`（没吃成）。效果由你在它返回真之后自己做。
+- `B.trimBerries(p)`：把这只宝可梦超过上限的树果（和下面「算作树果」的 mod 道具）收走，返回收走了几个（上限变小之后调用）。
+- `api.berryCap(item, n)`：声明「每带一个这个携带道具，携带者每种树果的最大携带数量 +n」。只能传自己 mod 的道具。读档时多出来的树果会保留。
+- `api.countsAsBerry(item)`：声明自己 mod 的一个携带道具「算作树果」：携带者每有一份 `api.berryCap` 的加成，这个道具在它身上的最大携带数量也跟着 +n（奖励界面能不能再拿、「已经带满了（最多 N 个）」的提示都按加过的算）；加成没了以后，多出来的会被收走。
+
+```js
+const snack = api.item({ id: 'snack', name: '零食', tier: 'ULTRA', kind: 'held', max: 3, weight: 4, description: '视作树果。HP低于50%时吃掉，\n回复20点HP。' });
+api.countsAsBerry(snack);
+api.on('berryTime', ev => {
+  const p = ev.pokemon;
+  if (!snack.heldBy(p) || B.hpRatio(p) >= 0.5) return;
+  if (B.eatAsBerry(p, snack)) B.heal(p, 20, { message: B.name(p) + '吃掉了零食！' });
+});
+```
+
+### 壁、天气、粉末
+
+| 事件 | 什么时候 | 收到什么 | 返回值 |
+|---|---|---|---|
+| `screenSet` | 一只宝可梦用招式架起光墙、反射壁或极光幕的那一刻（还没架起来）。「换场」把壁搬到对面时不会触发 | `pokemon`（用招式的）`screen`（`'lightScreen'` `'reflect'` `'auroraVeil'`）`turns`（现在要持续几回合，原版是 5）`moveId` `then(fn)`（真的架起来之后再做的事，`fn` 收到 `{ turns }`；这一边已经有同一种壁时招式不生效，`fn` 不会被调用，所以提示文字写在 `then` 里） | 返回数字 = 改成持续这么多回合（至少 1）。几个处理函数依次接着算 |
+| `weatherDamage` | 沙暴、冰雹在回合结束时准备伤害场上的宝可梦之前，每只问一次（本来就不怕这种天气的也会被问到） | `pokemon` `weather`（`'sandstorm'` / `'hail'`） | 返回 `true` = 这只这回合不受天气伤害，也不出现「沙暴袭击了××」 |
+| `powderMove` | 一个粉末类招式（毒粉、麻痹粉、催眠粉、蘑菇孢子、棉孢子、粉尘、魔法粉）要对一只宝可梦生效之前；对手用了愤怒粉、`target` 要出单体招式时也会问（这时 `redirect` 是 `true`，`user` 是用愤怒粉的对手） | `user` `target` `moveId` `redirect` | 返回 `true` = 对 `target` 没有效果（显示游戏自己的「对××没有效果」）；`redirect` 时 = 不会被愤怒粉吸过去 |
+| `effectSpore` | 一只宝可梦用接触类招式打中了特性是「孢子」的宝可梦，特性要判定之前 | `pokemon`（出招的）`holder`（有孢子特性的） | 返回 `true` = 这一下孢子特性不发动 |
+
+后三个事件是「问一句、答一句」：选招界面显示效果、AI 估算时也会来问，会被问很多次。处理函数里只回答，不要发消息、不要改状态；有任何一个处理函数回答 `true` 就算 `true`。
+
+## 品质和出现概率
+
+| `tier` | 游戏里叫 | 颜色 |
+|---|---|---|
+| `ULTRA` | 高级道具 | 金 |
+| `ROGUE` | 肉鸽道具 | 红 |
+| `MASTER` | 大师道具 | 紫 |
+
+道具按品质放进对应的奖励档位，像是那个档位的奖池里多了一项；`weight` 不会高过同档位的原版携带道具。
+
+只要有一个开着的 mod 加了「独占」的额外奖励界面（见下面 `api.rewardScreen` 的 `exclusive`，「更好的联机道具」就是这样），**所有** mod 的道具都不再混进正常奖励，只从那种界面里出；这时 `weight` 不起作用。这个开关是全局的，不分 mod。
 
 ## 提交前自查
 
@@ -92,11 +284,11 @@ CoopMods.define('my-mod-id', function (api) {
 node tools/build-mods.mjs . --check
 ```
 
-会检查每个 mod 的 mod.json 字段、id 和文件夹名是否一致、mod.js 有没有语法错误。
+会检查每个 mod 的 mod.json 字段、id 和文件夹名是否一致、mod.js 有没有语法错误；打包时还会检查图标（PNG、不超过 32×32）。
 
 ## 现在还做不到的
 
-- 自带图标、自带音效
+- 自带音效
 - 单人模式里生效（目前所有 mod 只在双人合作房间里运行）
 - 道具在宝可梦之间转移、被对手夺走
 - 新招式、新特性、新宝可梦、改界面
