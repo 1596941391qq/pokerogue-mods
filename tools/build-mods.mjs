@@ -52,7 +52,10 @@ for (const id of readdirSync(dir, { withFileTypes: true }).filter(d => d.isDirec
   if (!/^[a-z0-9][a-z0-9-]{2,39}$/.test(id)) { skip('id: 3-40 lowercase letters, digits or -'); continue }
   const missing = FIELDS.filter(f => typeof mf[f] !== 'string' || !mf[f].trim())
   if (missing.length) { skip('mod.json is missing ' + missing.join(', ')); continue }
-  if (mf.api != null && ![1, 2].includes(mf.api)) { skip('"api" in mod.json must be 1 or 2'); continue }
+  if (mf.api != null && ![1, 2, 3].includes(mf.api)) { skip('"api" in mod.json must be 1, 2 or 3'); continue }
+  // 接口版本 3: "modes" says where the mod runs, a list of "solo" and "coop" (left out: co-op rooms only)
+  if (mf.modes != null && !(Array.isArray(mf.modes) && mf.modes.length && mf.modes.every(m => m === 'solo' || m === 'coop'))) { skip('"modes" in mod.json must be a list of "solo" and "coop"'); continue }
+  if (mf.modes != null && mf.modes.includes('solo') && mf.api !== 3) { skip('"modes" with "solo" needs "api": 3'); continue }
   try { execFileSync(process.execPath, ['--check', jsPath], { stdio: 'pipe' }) } catch (e) { skip('mod.js has a syntax error:\n' + String(e.stderr || e.message)); continue }
   const js = readFileSync(jsPath, 'utf8')
   if (!js.includes(`CoopMods.define('${id}'`) && !js.includes(`CoopMods.define("${id}"`)) { skip(`mod.js must call CoopMods.define('${id}', function (api) { ... })`); continue }

@@ -1,11 +1,11 @@
 # Engine extensions (engine/ext-<team>.js)
 
-The mod engine is `engine/host-mods.core.js` (接口版本 2). It owns the tables (mods, items, who holds what, the
+The mod engine is `engine/host-mods.core.js` (接口版本 3). It owns the tables (mods, items, who holds what, the
 team bag), the save block, the icons, the plates and the list of mods, and the hooks every mod needs (phase
 starts and ends, damage, move choice, status, stat stages, heal, the reward screen).
 
 Everything else a v0.9 item needs from the game goes into **one file per team**: `engine/ext-<team>.js`
-(`ext-b1.js`, `ext-b2.js`, `ext-c.js`, `ext-d.js`, `ext-e.js`, `ext-f.js`). Nobody edits the core, and nobody
+(`ext-b1.js`, `ext-b2.js`, `ext-c.js`, `ext-d.js`, `ext-e.js`, `ext-f.js`, and since 接口版本 3 `ext-g.js`). Nobody edits the core, and nobody
 edits another team's file. `tools/assemble.mjs` writes `host-mods.js` = the core followed by the extensions in
 file-name order.
 
@@ -307,3 +307,34 @@ What happens with the mod off: `X.before` never runs `fn` (the wrapper calls the
 runs on without the mod.
 
 (The numbers and the wording of the real 生命红绳 are team d's to decide from the issue; this is only the shape.)
+
+## 接口版本 3: solo games, values per run, `ext-g.js`
+
+Asked for by B 站 Chess_大概是屑 & 深溟Ming for their 进阶 (ascension) mod. What changed for extension writers:
+
+- **The engine now loads with every page**, not only with a co-op room (desktop: `main.mjs` injects
+  `host-mods.js` and `mods-bundle.js` on every load; mobile: two `<script defer>` tags from `patch-web.mjs`).
+  While there is no co-op room and no switched-on mod that lists `"solo"` in `modes`, the timer returns at once
+  and nothing of the game is wrapped.
+- `X.coop()` is true inside a co-op room. `X.wanted(id)` is the player's switch; `X.isOn(id)` is the switch AND
+  the mod's `modes` fitting the game being played. Use `isOn` to decide whether a mod acts, `wanted` to draw
+  the switch.
+- `X.runState(id)` is the mod's plain object of this run (what `api.runState()` returns). It is written into
+  the save block as `run: { <modId>: {...} }`. While a new game's starter screen is up there is no run yet:
+  writes go into a holding object that becomes the run's when the first wave begins. `X.inSetup()` tells you
+  are there; `X.onSetup(fn)` calls you when that screen opens.
+- `X.onPanel((id, render) => element | null)` adds a block under a mod in the list of mods (`X.el` builds
+  elements); call `render()` after changing something. `X.panelOpen()`.
+- `damageCalc` events carry `moveId` and a lazy `effectiveness`.
+
+`ext-g.js` uses these for the difficulty events (`partyMax`, `starterMax`, `starterPoints`, `rewardOdds`,
+`moneyGain`, `expGain`, `partyHeal`, `reviveHp`, `bossWave`, `bossSegments`, `wildBiome`, `itemAllowed`) and for
+`api.runSetup`; its header comment lists each event with what it carries. Four of them cannot be done by wrapping
+and need the game build patched (the same list in the desktop repo's `scripts/patch-coop.mjs` and the mobile
+repo's `scripts/patch-web.mjs`): the game asks `window.PRS_PARTY_MAX()`, `window.PRS_STARTER_MAX()`,
+`window.PRS_POINTS()` and `window.PRS_T(index)`, which `ext-g.js` defines. Without the engine loaded the
+patched game falls back to its own numbers.
+
+Testing a solo mod: `RIG_SOLO=1 rigs/rig.sh start solo <absolute path of public>` starts the game with only
+`host-mods.js` and `mods-bundle.js` injected (no room); `CoopMods.debug.g()` shows how often each event was
+asked, the last before/after values, the limits in force and every mod's run choice.

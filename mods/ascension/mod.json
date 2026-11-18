@@ -1,0 +1,11 @@
+{
+  "id": "ascension",
+  "name": "进阶（累积难度）",
+  "version": "0.1.0",
+  "author": "Chess_大概是屑 & 深溟Ming",
+  "credits": "点子、规则和原始实现：B 站 Chess_大概是屑 & 深溟Ming；改成工坊接口：黑咖啡和冰月亮",
+  "description": "《杀戮尖塔》式的累积难度，0 到 10 级：选 N 级 = 第 1 到第 N 条规则同时生效。开新游戏选宝可梦时选等级，0 级和没开这个 Mod 时一样。单人和双人合作都能用。",
+  "default": "off",
+  "api": 3,
+  "modes": ["solo", "coop"]
+}
