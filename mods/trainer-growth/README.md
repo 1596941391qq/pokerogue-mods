@@ -10,6 +10,7 @@ mod 本体、配套的引擎扩展和图标都是他写的，最早以 [pokerogu
 - **单人模式和双人合作都能用。**
 - **默认是关的。** 没开时和原来完全一样；开了以后再关掉，加成马上撤掉，攒下的点和升过的等级都留着。
 - 每条线都能「退款」：退一级，把升这一级花的点原样还回来。
+- **11-20 版安装包（标签 pokerogue20261120）起自带**：[电脑版下载](https://github.com/1596941391qq/pokerogue-desktop/releases/tag/pokerogue20261120)、[手机版下载](https://github.com/1596941391qq/pokerogue-ios-android/releases/tag/pokerogue20261120)。更早的安装包里没有。
 
 ## 怎么用
 

@@ -13,7 +13,7 @@
 
 ## 什么时候能玩到
 
-代码 2026-11-19 已经合进电脑版和手机版的源码，**还没有进安装包**：11-18 版的安装包里没有这个 mod，下一个安装包（预计 12 月上旬）起自带。等不及的话，电脑版可以从源码跑：拉 [pokerogue-desktop](https://github.com/1596941391qq/pokerogue-desktop) 的 main，照那边 README 的步骤 `npm start`。
+**11-20 版安装包（标签 pokerogue20261120）起自带**，更新到这一版就有：[电脑版下载](https://github.com/1596941391qq/pokerogue-desktop/releases/tag/pokerogue20261120)、[手机版下载](https://github.com/1596941391qq/pokerogue-ios-android/releases/tag/pokerogue20261120)。更早的安装包里没有这个 mod。
 
 ## 怎么用
 
