@@ -5,7 +5,7 @@ team bag), the save block, the icons, the plates and the list of mods, and the h
 starts and ends, damage, move choice, status, stat stages, heal, the reward screen).
 
 Everything else a v0.9 item needs from the game goes into **one file per team**: `engine/ext-<team>.js`
-(`ext-b1.js`, `ext-b2.js`, `ext-c.js`, `ext-d.js`, `ext-e.js`, `ext-f.js`, and since 接口版本 3 `ext-g.js`). Nobody edits the core, and nobody
+(`ext-b1.js`, `ext-b2.js`, `ext-c.js`, `ext-d.js`, `ext-e.js`, `ext-f.js`, since 接口版本 3 `ext-g.js`, and `ext-h.js`, written by chenjunjue / xiaochen2245 for the mod trainer-growth: data outside a run, the growth panel, the caught / egg gacha / permanent stat events). Nobody edits the core, and nobody
 edits another team's file. `tools/assemble.mjs` writes `host-mods.js` = the core followed by the extensions in
 file-name order.
 

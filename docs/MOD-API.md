@@ -353,6 +353,64 @@ api.on('expGain', ev => (api.runValue() >= 1 ? ev.amount * 0.9 : undefined));
 - `bossWave` 只能把不是首领的层变成首领层，不能反过来。
 - `damageCalc`（接口版本 1 就有）的 `ev` 多了两个只读的东西：`moveId`（招式编号）和 `effectiveness`（这一下的属性相克倍率，大于 1 是效果绝佳）。
 
+## 局外数据、成长线面板、捕捉和扭蛋机（引擎扩展 h 提供）
+
+这一节的东西是 chenjunjue（GitHub [xiaochen2245](https://github.com/xiaochen2245)）为 [训练家提升](../mods/trainer-growth/) 写的引擎扩展 `engine/ext-h.js`，别的 mod 也能用。单人模式和双人合作都一样。
+
+### 局外数据 `api.meta()` 和 `api.metaSave()`
+
+`api.runState()` 是跟着一局走的；`api.meta()` 是**不跟着任何一局**的：关掉游戏、换存档都还在。每个 mod 一份。
+
+```js
+const M = api.meta();          // 普通对象，自带 points（数字）、lines（成长线等级）、caught（给过点的宝可梦）
+M.points += 6;
+api.metaSave();                // 改完要存
+```
+
+它存在这台设备的本地数据里（`localStorage` 的 `prs-mod-meta-<mod id>`），不跟云存档走：换设备带不过去，清游戏数据会丢。请在你的 README 里写明这一点。双人合作里用的是房主那台设备的数据。
+
+### 成长线面板 `api.metaPanel(def)`
+
+在 Mod 列表里你的 mod 下面画一块面板：顶上是点数和「展开成长线」，展开后每条线一行，带「升级」和「退款」按钮。每个 mod 只能调一次。
+
+```js
+api.metaPanel({
+  title: '成长点',
+  summary: () => '运气 +2',                 // 可选：「当前效果：」后面写什么
+  note: () => '已捕捉 37 种',                // 可选：多写一行，返回空字符串就不画
+  lines: [
+    { id: 'luck', name: '局内运气', max: 10,
+      cost: lv => 120 + lv * 40,             // 从 lv 级升到下一级要多少点；也可以写一个固定的数
+      desc: lv => '队伍的运气 +' + lv },
+  ],
+  onChange: (id, lv, kind) => { /* kind 是 'up' 或 'down'；lv 是变化之后的等级 */ },
+});
+```
+
+点数从 `api.meta().points` 里扣，等级记在 `api.meta().lines[id]`，面板自己会存。退款把升那一级花的点原样还回来。
+
+### 图鉴和随机数
+
+- `api.dexProgress()`：`{ caught, total, progress }`，游戏自己记的「抓到过多少种 / 一共多少种」，`progress` 是 0 到 1。
+- `api.dexTotal()`：图鉴一共多少种，拿不到是 0。
+- `api.rng(字符串)`：种子随机数，同样的字符串总是同样的数（0 到 1）。
+
+### 新事件
+
+| 事件 | 什么时候 | 事件里有什么 | 返回值 |
+|---|---|---|---|
+| `pokemonCaught` | 玩家得到一只宝可梦（和游戏记图鉴是同一个时机；租借的不算） | `speciesId`、`name`、`kind`（`'catch'` 野外捕捉 / `'egg'` 孵蛋 / `'evolution'` 进化出的新形态）、`first`（图鉴里之前没有）、`rarity`：`{ mythical, legendary, subLegendary, baseTotal, starterCost }` | 不用 |
+| `gachaEggTier` | 扭蛋机抽到一只蛋 | `tier`（0 普通 … 3 大师）、`sourceType`、`n` | 返回更高的 `tier` 就是升档 |
+| `gachaEggBoosted` | 蛋真的被升了档 | `tier`、`newTier`、`sourceType`、`n`、`egg` | 不用 |
+| `gachaEggMark` | 画蛋的名字之前 | `id`、`tier`、`boosted`、`egg` | 返回 `true` 就在名字后面加「+」 |
+| `gachaPull` | 扭蛋机开始抽一批蛋 | `count` | 不用 |
+| `pokemonStatBonus` | 算完玩家一只宝可梦的能力值之后 | `pokemon`、`bonus` | 往 `bonus` 里写比例：`ev.bonus.atk = 0.1` 就是攻击 +10%。可写 `atk` `def` `spatk` `spdef` `spd`。敌人不算 |
+| `itemInfo` | 道具栏里指着「训练家提升」那个道具时 | 没有 | 返回一段文字（`\n` 分行），显示在游戏自己的道具说明面板里。现在只有训练家提升那一个道具会问，别的 mod 的道具还用不上 |
+
+`pokemonStatBonus` 的加成跟着 mod 的开关走：关掉当场撤掉，再打开当场加回。
+
+扭蛋机那几个事件要等玩家手里有过蛋才开始生效：一只蛋都没有的新档，第一批抽出来的蛋不会触发。
+
 ## 品质和出现概率
 
 | `tier` | 游戏里叫 | 颜色 |
